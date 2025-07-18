@@ -1,0 +1,29 @@
+# Python 虚拟环境
+venv/
+env/
+.env/
+
+# 向量库数据目录
+knowledge_db/
+
+# 数据目录
+data/
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
