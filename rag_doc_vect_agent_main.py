@@ -10,7 +10,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 # current_dir = os.path.dirname(os.path.abspath(__file__))
 
-LLMModel = OllamaLLM(model="llama3") # "gemma:2b"  mistral  llama3
+# LLMModel = OllamaLLM(model="llama3") # "gemma:2b"  mistral  llama3
+LLMModel = OllamaLLM(model="llama3.2:1b")
 #ChatLLMModel = ChatOllama(model="llama3", temperature=0.7)
 
 template_general = """
