@@ -151,7 +151,6 @@ const HyundaiDirectIntegration = () => {
   const [knowledgeBases, setKnowledgeBases] = useState([]);
   const [selectedKB, setSelectedKB] = useState(null);
   const [documents, setDocuments] = useState([]);
-  const [isLoadingKB, setIsLoadingKB] = useState(false); // 新增：知识库加载状态
   
   // UI状态
   const [notification, setNotification] = useState({ type: '', message: '' });
@@ -162,13 +161,6 @@ const HyundaiDirectIntegration = () => {
   useEffect(() => {
     testServerConnection();
   }, []);
-
-  // 监听选项卡切换，自动加载知识库
-  useEffect(() => {
-    if (activeTab === 'knowledge' && isConnected && knowledgeBases.length === 0) {
-      loadKnowledgeBases();
-    }
-  }, [activeTab, isConnected]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -185,10 +177,7 @@ const HyundaiDirectIntegration = () => {
       if (result.success) {
         setServerMode(result.data?.mode || 'production');
         showNotification('success', result.message);
-        // 如果当前在知识库页面，自动加载知识库
-        if (activeTab === 'knowledge') {
-          await loadKnowledgeBases();
-        }
+        await loadKnowledgeBases();
       } else {
         setServerMode('unknown');
         showNotification('error', result.message);
@@ -213,9 +202,9 @@ const HyundaiDirectIntegration = () => {
     showNotification('success', '登录功能开发中，当前为演示模式');
   };
 
-  // 轮询任务结果 - 修改轮询间隔为10秒
+  // 轮询任务结果
   const pollTaskResult = async (taskId, thinkingMessageId) => {
-    const maxAttempts = 60; // 最多轮询10分钟 (60次 * 10秒)
+    const maxAttempts = 120; // 最多轮询2分钟
     let attempts = 0;
     
     const poll = async () => {
@@ -257,13 +246,13 @@ const HyundaiDirectIntegration = () => {
           
           setMessages(prev => prev.map(msg => 
             msg.id === thinkingMessageId 
-              ? { ...msg, content: `${statusMessages[taskResult.status] || '正在思考中...'} (${attempts}/${maxAttempts})` }
+              ? { ...msg, content: statusMessages[taskResult.status] || '正在思考中...' }
               : msg
           ));
           
           // 继续轮询
           if (attempts < maxAttempts) {
-            setTimeout(poll, 10000); // 改为每10秒轮询一次
+            setTimeout(poll, 1000); // 每秒轮询一次
           } else {
             // 超时处理
             const timeoutMessage = {
@@ -290,14 +279,14 @@ const HyundaiDirectIntegration = () => {
           
           setMessages(prev => prev.filter(msg => msg.id !== thinkingMessageId).concat([errorMessage]));
         } else {
-          // 网络错误时重试，间隔也改为10秒
-          setTimeout(poll, 10000);
+          // 网络错误时重试
+          setTimeout(poll, 2000);
         }
       }
     };
     
-    // 第一次轮询延迟5秒
-    setTimeout(poll, 5000);
+    // 开始轮询
+    setTimeout(poll, 1000);
   };
 
   // 发送消息（支持异步任务ID和轮询）
@@ -320,7 +309,7 @@ const HyundaiDirectIntegration = () => {
     const thinkingMessage = {
       id: Date.now() + 1,
       type: 'assistant',
-      content: '正在思考中，请稍候... (1/60)',
+      content: '正在思考中，请稍候...',
       timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       isThinking: true
     };
@@ -357,38 +346,19 @@ const HyundaiDirectIntegration = () => {
     }
   };
 
-  // 加载知识库 - 修复：添加加载状态和错误处理
-  const loadKnowledgeBases = async () => {
-    if (!isConnected) {
-      console.log('服务器未连接，跳过加载知识库');
-      return;
-    }
+  // 加载知识库
+  const loadKnowledgeBases = async (force = false) => {
+    if (!isConnected && !force) return; // 如果未连接，且不是强制加载，则不加载
     
-    setIsLoadingKB(true);
     try {
-      console.log('开始加载知识库...');
       const response = await client.getKnowledgeBases();
-      console.log('知识库API响应:', response);
-      
       if (response.code === 0) {
-        const kbList = response.data || [];
-        console.log('获取到知识库列表:', kbList);
-        setKnowledgeBases(kbList);
-        
-        if (kbList.length > 0) {
-          showNotification('success', `成功加载 ${kbList.length} 个知识库`);
-        } else {
-          console.log('知识库列表为空');
-        }
+        setKnowledgeBases(response.data || []);
       } else {
-        console.error('加载知识库失败:', response);
-        showNotification('error', response.message || '加载知识库失败');
+        showNotification('error', '加载知识库失败');
       }
     } catch (error) {
-      console.error('加载知识库异常:', error);
       showNotification('error', `加载知识库失败: ${error.message}`);
-    } finally {
-      setIsLoadingKB(false);
     }
   };
 
@@ -401,7 +371,7 @@ const HyundaiDirectIntegration = () => {
       const response = await client.createKnowledgeBase(name, description);
       if (response.code === 0) {
         showNotification('success', '知识库创建成功');
-        await loadKnowledgeBases(); // 重新加载知识库列表
+        await loadKnowledgeBases(true); // 强制加载，确保新建的知识库也显示
       } else {
         showNotification('error', response.message || '创建知识库失败');
       }
@@ -536,7 +506,7 @@ const HyundaiDirectIntegration = () => {
             </span>
           </div>
           <div className="bg-blue-700 px-3 py-1 rounded text-sm">
-            轮询间隔: 10秒
+            Chat screen
           </div>
         </div>
       </div>
@@ -562,7 +532,7 @@ const HyundaiDirectIntegration = () => {
                   message.type === 'user' 
                     ? 'bg-blue-600 text-white' 
                     : 'bg-white border border-gray-200'
-                }`}>
+                } text-left`}>
                   <p className="text-sm">{message.content}</p>
                   <p className={`text-xs mt-2 ${message.type === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
                     {message.timestamp}
@@ -571,6 +541,23 @@ const HyundaiDirectIntegration = () => {
               </div>
             </div>
           ))}
+          
+          {/* 加载状态 */}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="flex items-start space-x-3 max-w-2xl">
+                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                  <Car className="w-6 h-6 text-blue-600" />
+                </div>
+                <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Loader className="w-4 h-4 animate-spin text-blue-600" />
+                    <span className="text-sm text-gray-600">现代汽车智能助手正在思考...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
           <div ref={messagesEndRef} />
         </div>
@@ -686,66 +673,25 @@ const HyundaiDirectIntegration = () => {
     </div>
   );
 
-  // 渲染知识库界面 - 修复显示问题
+  // 渲染知识库界面
   const renderKnowledgeBase = () => (
     <div className="flex-1 p-6 bg-gray-50">
       <div className="mb-6 flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">知识库管理</h2>
-        <div className="flex items-center space-x-4">
-          {/* 刷新按钮 */}
-          <button
-            onClick={loadKnowledgeBases}
-            disabled={!isConnected || isLoadingKB}
-            className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:bg-gray-400 flex items-center"
-          >
-            {isLoadingKB ? (
-              <>
-                <Loader className="w-4 h-4 mr-2 animate-spin" />
-                加载中...
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4 mr-2" />
-                刷新
-              </>
-            )}
-          </button>
-          
-          {/* 新建知识库按钮 */}
-          <button
-            onClick={() => {
-              const name = prompt('请输入知识库名称:');
-              const description = prompt('请输入知识库描述:');
-              if (name) createKnowledgeBase(name, description || '');
-            }}
-            disabled={!isConnected}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            新建知识库
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            const name = prompt('请输入知识库名称:');
+            const description = prompt('请输入知识库描述:');
+            if (name) createKnowledgeBase(name, description || '');
+          }}
+          disabled={!isConnected}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          新建知识库
+        </button>
       </div>
 
-      {/* 连接状态提示 */}
-      {!isConnected && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mr-2" />
-            <span className="text-yellow-800">请先连接到本地服务器才能管理知识库</span>
-          </div>
-        </div>
-      )}
-
-      {/* 加载状态 */}
-      {isLoadingKB && (
-        <div className="bg-white rounded-lg shadow-sm border p-8 text-center mb-6">
-          <Loader className="w-8 h-8 mx-auto mb-4 text-blue-600 animate-spin" />
-          <p className="text-gray-600">正在加载知识库...</p>
-        </div>
-      )}
-
-      {/* 知识库列表 */}
       <div className="grid gap-4">
         {knowledgeBases.map(kb => (
           <div
@@ -783,23 +729,11 @@ const HyundaiDirectIntegration = () => {
           </div>
         ))}
         
-        {/* 空状态显示 */}
-        {isConnected && !isLoadingKB && knowledgeBases.length === 0 && (
+        {knowledgeBases.length === 0 && (
           <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
             <Database className="w-12 h-12 mx-auto mb-4 text-gray-300" />
             <p className="text-gray-500 mb-2">暂无知识库</p>
-            <p className="text-sm text-gray-400 mb-4">请创建您的第一个知识库</p>
-            <button
-              onClick={() => {
-                const name = prompt('请输入知识库名称:');
-                const description = prompt('请输入知识库描述:');
-                if (name) createKnowledgeBase(name, description || '');
-              }}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center mx-auto"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              创建第一个知识库
-            </button>
+            <p className="text-sm text-gray-400">请创建您的第一个知识库</p>
           </div>
         )}
       </div>
@@ -842,11 +776,6 @@ const HyundaiDirectIntegration = () => {
                serverMode === 'mock' ? '演示模式' : '未知'}
             </span>
           </div>
-
-          <div className="flex justify-between items-center">
-            <span>轮询间隔</span>
-            <span className="text-gray-600">10秒 (优化后)</span>
-          </div>
           
           <button
             onClick={testServerConnection}
@@ -868,31 +797,6 @@ const HyundaiDirectIntegration = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">性能优化配置</h3>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <span>对话轮询间隔</span>
-            <span className="text-gray-600">10秒 (减少服务器压力)</span>
-          </div>
-          
-          <div className="flex justify-between items-center">
-            <span>最大轮询次数</span>
-            <span className="text-gray-600">60次 (总计10分钟)</span>
-          </div>
-          
-          <div className="flex justify-between items-center">
-            <span>知识库自动加载</span>
-            <span className="text-green-600">已启用</span>
-          </div>
-          
-          <div className="flex justify-between items-center">
-            <span>错误重试机制</span>
-            <span className="text-green-600">已启用</span>
-          </div>
-        </div>
-      </div>
-
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">系统信息</h3>
         <div className="space-y-4">
@@ -903,17 +807,12 @@ const HyundaiDirectIntegration = () => {
           
           <div className="flex justify-between items-center">
             <span>版本信息</span>
-            <span className="text-gray-600">v2024.1 (优化版)</span>
+            <span className="text-gray-600">v2024.1</span>
           </div>
           
           <div className="flex justify-between items-center">
             <span>技术架构</span>
             <span className="text-gray-600">React + Flask + RAGFlow</span>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <span>知识库数量</span>
-            <span className="text-gray-600">{knowledgeBases.length} 个</span>
           </div>
         </div>
       </div>
@@ -934,14 +833,6 @@ const HyundaiDirectIntegration = () => {
                 <li>3. 等待服务器启动完成 (端口8000)</li>
                 <li>4. 点击"测试连接"按钮验证</li>
               </ol>
-              <div className="mt-4 p-3 bg-yellow-100 rounded border">
-                <p className="text-xs text-yellow-800 font-medium">优化说明：</p>
-                <ul className="text-xs text-yellow-700 mt-1 space-y-1">
-                  <li>• 轮询间隔已优化为10秒，减少服务器负载</li>
-                  <li>• 知识库会在切换到相应页面时自动加载</li>
-                  <li>• 添加了详细的加载状态和错误提示</li>
-                </ul>
-              </div>
             </div>
           </div>
         </div>
@@ -949,6 +840,12 @@ const HyundaiDirectIntegration = () => {
     </div>
   );
   
+  useEffect(() => {
+    if (activeTab === 'knowledge') {
+      loadKnowledgeBases(true);
+    }
+  }, [activeTab]);
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* 通知消息 */}
@@ -983,4 +880,3 @@ const HyundaiDirectIntegration = () => {
 };
 
 export default HyundaiDirectIntegration;
-            
